@@ -1,5 +1,4 @@
-from typing import Optional
-
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 
@@ -12,10 +11,14 @@ class SearchRequest(BaseModel):
 
 
 class SearchResultItem(BaseModel):
-    score: Optional[float] = None
+    score: Optional[float]
     content: str
-    metadata: dict
+    metadata: Dict[str, Any]
 
 
 class SearchResponse(BaseModel):
     results: List[SearchResultItem]
+
+
+class DeleteByMetadataRequest(BaseModel):
+    filter_metadata: Dict[str, Any]
