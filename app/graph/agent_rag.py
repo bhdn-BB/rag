@@ -1,58 +1,81 @@
-from typing import Dict
+# app/graph/agent_rag.py
+from typing import List, Optional, Literal, Any
+from langgraph.graph import StateGraph, START, END
+from langchain_core.documents import Document
+import logging
 
-from langgraph.graph.state import StateGraph, CompiledStateGraph
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
+
+from app.graph.nodes.fallback_node import FallbackNode
+from app.graph.nodes.generate_node import GenerateNode
+from app.graph.nodes.grade_node import GradeNode
 from app.graph.nodes.input_node import InputNode
 from app.graph.nodes.retrieve_node import RetrieveNode
-from app.graph.nodes.grade_node import GradeNode
 from app.graph.nodes.rewrite_node import RewriteNode
-from app.graph.nodes.generate_node import GenerateNode
-from app.graph.llm_client import LLMClient, LLMParams
+from app.graph.state_model import GraphState
 from app.services.vector_storage import VectorMemory
+from app.graph.llm_client import LLMClient
+from app.models.parameters import BiEncoderParams, CrossEncoderParams
+from app.services.embedders import HFBiEmbedder, HFCrossEncoder
+
+logger = logging.getLogger("RAGAgent")
 
 
-class AgenticRAG:
-    def __init__(self, vector_memory: VectorMemory, llm_params: LLMParams):
-        self.vector_memory = vector_memory
-        self.llm_client = LLMClient(params=llm_params)
+class RAGAgent:
 
-        self.input_node = InputNode()
-        self.retrieve_node = RetrieveNode(vector_memory)
-        self.grade_node = GradeNode()
-        self.rewrite_node = RewriteNode(self.llm_client)
-        self.generate_node = GenerateNode(self.llm_client)
-
-        self.graph = StateGraph(initial_state={})
-        self.memory_saver = InMemorySaver()
-        self._build_graph()
-        self.compiled: CompiledStateGraph = self.graph.compile(memory=self.memory_saver)
-
-    def _build_graph(self):
-        self.graph.add_node("input_node", self.input_node)
-        self.graph.add_node("retrieve_node", self.retrieve_node)
-        self.graph.add_node("grade_node", self.grade_node)
-        self.graph.add_node("rewrite_node", self.rewrite_node)
-        self.graph.add_node("generate_node", self.generate_node)
-
-        self.graph.add_edge("input_node", "retrieve_node")
-        self.graph.add_edge("retrieve_node", "grade_node")
-        self.graph.add_edge(
-            "grade_node",
-            "generate_node",
-            condition=lambda s: s.get("docs_count", 0) >= 2
+    def __init__(self, max_rewrite_attempts: int = 1):
+        self.llm = LLMClient()
+        self.vector_memory = VectorMemory(
+            HFBiEmbedder(BiEncoderParams()),
+            HFCrossEncoder(CrossEncoderParams())
         )
-        self.graph.add_edge(
-            "grade_node",
-            "rewrite_node",
-            condition=lambda s: s.get("docs_count", 0) < 2
+        self.max_rewrite_attempts = max_rewrite_attempts
+        self.graph = self._build_graph()
+
+    def _build_graph(self) -> CompiledStateGraph[Any, Any, Any, Any]:
+        graph = StateGraph(GraphState)
+        graph.add_node("input", InputNode())
+        graph.add_node("rewrite", RewriteNode(self.llm))
+        graph.add_node("retrieve", RetrieveNode(self.vector_memory))
+        graph.add_node("generate", GenerateNode(self.llm))
+        graph.add_node("grade", GradeNode())
+        graph.add_node("fallback", FallbackNode())
+
+        graph.add_edge(START, "input")
+        graph.add_edge("input", "rewrite")
+        graph.add_edge("rewrite", "retrieve")
+        graph.add_edge("retrieve", "generate")
+        graph.add_edge("generate", "grade")
+
+        def route_after_grade(state: GraphState) -> Literal["rewrite", "fallback", "__end__"]:
+            if state["answer"]:
+                return "__end__"
+            if state["rewrite_attempts"] < self.max_rewrite_attempts and state["docs"]:
+                return "rewrite"
+            return "fallback"
+
+        graph.add_conditional_edges(
+            "grade",
+            route_after_grade
         )
-        self.graph.add_edge("rewrite_node", "retrieve_node")
 
-    def run(self, query: str, session_id: str = "default") -> Dict:
-        state = {"input_query": query, "session_id": session_id}
-        return self.compiled.invoke(state)
+        graph.add_edge("fallback", END)
 
-    def stream(self, query: str, session_id: str = "default", stream_mode: list = ["updates"]):
-        state = {"input_query": query, "session_id": session_id}
-        for update in self.compiled.stream(state, stream_mode=stream_mode):
-            yield update
+        return graph.compile()
+
+    def run(self, query: str, docs: Optional[List[Document]] = None) -> dict:
+        state: GraphState = {
+            "input_query": query,
+            "docs": docs,
+            "query": "",
+            "answer": "",
+            "sources": [],
+            "docs_count": 0,
+            "rewrite_attempts": 0,
+            "messages": []
+        }
+        result = self.graph.invoke(state)
+        return result
+
+    def reset(self):
+        logger.info("RAGAgent state has been reset")

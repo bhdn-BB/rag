@@ -1,39 +1,74 @@
-from typing import Dict, List
+from typing import List, Dict, Any
 from app.graph.llm_client import LLMClient
 from app.graph.prompts import get_prompt_template
 from langchain_core.documents import Document
+from app.graph.state_model import GraphState, SourceInfo
 import logging
 
 logger = logging.getLogger("GenerateNode")
+
 
 class GenerateNode:
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
         self.prompt_template = get_prompt_template()
 
-    def __call__(self, state: Dict) -> Dict:
-        docs: List[Document] = state.get("docs", [])
+    def _extract_source_info(self, doc: Document, idx: int, score: float = None) -> SourceInfo:
+        metadata = doc.metadata or {}
+
+        source = metadata.get("source") or metadata.get("title") or f"Document_{idx}"
+
+        page = metadata.get("page") or metadata.get("page_number")
+        if page is not None:
+            try:
+                page = int(page)
+            except (ValueError, TypeError):
+                page = None
+
+        section = metadata.get("section") or metadata.get("header") or metadata.get("chapter")
+
+        return SourceInfo(
+            content=doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+            source=source,
+            page=page,
+            section=section,
+            score=score,
+            metadata=metadata
+        )
+
+    def __call__(self, state: GraphState) -> dict:
+        docs: List[Document] = state["docs"]
         if not docs:
-            state["answer"] = "На основі наданого контексту не можу відповісти на це питання."
-            state["sources"] = []
-            return state
-
+            return {
+                "answer": "",
+                "sources": []
+            }
         context_parts = []
-        sources = []
+        sources_info: List[SourceInfo] = []
+
         for idx, doc in enumerate(docs, 1):
-            source = doc.metadata.get("source", f"Document_{idx}")
-            sources.append(source)
-            context_parts.append(f"[{source}] {doc.page_content}")
-
-        context_text = "\n\n".join(context_parts)
-        prompt = self.prompt_template.format(context=context_text, query=state["query"])
-
+            metadata = doc.metadata or {}
+            score = metadata.get("score")
+            source_info = self._extract_source_info(doc, idx, score)
+            sources_info.append(source_info)
+            source_label = f"[{idx}] {source_info['source']}"
+            if source_info['page'] is not None:
+                source_label += f" (стор. {source_info['page']})"
+            if source_info['section']:
+                source_label += f" - {source_info['section']}"
+            context_parts.append(f"{source_label}\n{doc.page_content}")
+        context_text = "\n\n---\n\n".join(context_parts)
+        prompt = self.prompt_template.format(
+            context=context_text,
+            query=state["query"]
+        )
         try:
             answer = self.llm_client.generate(prompt)
+            logger.info(f"Generated answer with {len(sources_info)} sources")
         except Exception as e:
             logger.error(f"LLM generation error: {e}")
-            answer = "Виникла помилка при генерації відповіді."
-
-        state["answer"] = answer
-        state["sources"] = sources
-        return state
+            answer = ""
+        return {
+            "answer": answer,
+            "sources": sources_info
+        }

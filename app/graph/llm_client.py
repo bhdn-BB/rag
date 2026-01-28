@@ -1,6 +1,7 @@
 import os
 import logging
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
@@ -9,7 +10,7 @@ from app.models.parameters import LLMParams
 logger = logging.getLogger("LLMClient")
 logger.setLevel(logging.INFO)
 
-
+load_dotenv()
 class LLMClient:
     def __init__(self, params: LLMParams = LLMParams()):
         self.params = params
