@@ -1,6 +1,7 @@
+from typing import Dict
+
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langgraph.checkpoint.memory import InMemorySaver
-
 from app.graph.nodes.input_node import InputNode
 from app.graph.nodes.retrieve_node import RetrieveNode
 from app.graph.nodes.grade_node import GradeNode
@@ -38,19 +39,18 @@ class AgenticRAG:
         self.graph.add_edge(
             "grade_node",
             "generate_node",
-            condition=lambda state: len(state.get("docs", [])) >= 2
+            condition=lambda s: s.get("docs_count", 0) >= 2
         )
         self.graph.add_edge(
             "grade_node",
             "rewrite_node",
-            condition=lambda state: len(state.get("docs", [])) < 2
+            condition=lambda s: s.get("docs_count", 0) < 2
         )
         self.graph.add_edge("rewrite_node", "retrieve_node")
 
-    def run(self, query: str, session_id: str = "default") -> str:
+    def run(self, query: str, session_id: str = "default") -> Dict:
         state = {"input_query": query, "session_id": session_id}
-        result_state = self.compiled.invoke(state)
-        return result_state.get("answer", "")
+        return self.compiled.invoke(state)
 
     def stream(self, query: str, session_id: str = "default", stream_mode: list = ["updates"]):
         state = {"input_query": query, "session_id": session_id}

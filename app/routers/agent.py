@@ -15,12 +15,18 @@ agent = AgenticRAG(vector_memory, llm_params)
 
 @router.get("/run")
 def run_agent(query: str = Query(...)):
-    answer = agent.run(query)
-    return {"answer": answer}
+    result = agent.run(query)
+    return {
+        "answer": result.get("answer", ""),
+        "sources": result.get("sources", [])
+    }
 
 @router.get("/stream")
 def stream_agent(query: str = Query(...)):
     def event_generator():
         for update in agent.stream(query):
-            yield json.dumps(update) + "\n"
+            yield json.dumps({
+                "answer": update.get("answer", ""),
+                "sources": update.get("sources", [])
+            }) + "\n"
     return StreamingResponse(event_generator(), media_type="application/json")
