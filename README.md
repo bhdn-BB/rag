@@ -91,7 +91,7 @@ Interact with the intelligent RAG agent for question-answering.
 
 | Method | Path         | Description |
 |--------|--------------|-------------|
-| `POST` | `/rag/query` | Ask a question to the RAG agent |
+| `POST` | `/rag/chat`     | Ask a question to the RAG agent |
 | `POST` | `/rag/reset` | Reset conversation memory |
 
 #### Examples
