@@ -53,7 +53,7 @@ class VectorMemory:
         self,
         bi_embedder: HFBiEmbedder,
         cross_encoder: Optional[HFCrossEncoder] = None,
-        persist_path: Optional[str] = None,
+        persist_path: Optional[str] = "data/chroma_index",
         batch_size: int = 16,
     ):
         self.bi_embedder = bi_embedder

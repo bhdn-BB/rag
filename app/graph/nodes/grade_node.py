@@ -1,7 +1,7 @@
 from typing import Dict
 
 
-class InputNode:
+class GradeNode:
     def __call__(self, state: Dict) -> Dict:
-        state["query"] = state.get("input_query", "")
+        state["docs_count"] = len(state.get("docs", []))
         return state
