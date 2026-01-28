@@ -1,5 +1,9 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
+import torch
+
+from langchain_core.documents import Document
+
 
 @dataclass
 class BatchWorker:
@@ -18,16 +22,20 @@ class ChunkingParameters:
 @dataclass
 class BiEncoderParams:
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    device: Optional[str] = None
-    max_length: int = 800
+    device: Optional[str] = field(
+        default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    max_length: int = 256  # CRITICAL: зменшено з 800 до 256 для уникнення помилок
     normalize: bool = True
 
 
 @dataclass
 class CrossEncoderParams:
     model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    device: Optional[str] = None
-    max_length: int = 800
+    device: Optional[str] = field(
+        default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    max_length: int = 256
 
 
 @dataclass
@@ -61,3 +69,9 @@ class LLMParams:
     model_name: str = "gemini-2.5-flash"
     temperature: float = 0
     max_output_tokens: int = 512
+
+
+@dataclass
+class SearchHit:
+    document: Document
+    score: Optional[float] = None
