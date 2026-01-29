@@ -72,21 +72,19 @@ class VectorMemory:
         if not docs:
             logger.warning("No documents to add")
             return
+
         self._vector_store.add_texts(
             texts=[d.page_content for d in docs],
             metadatas=[d.metadata for d in docs],
         )
-        self._vector_store.persist()
         logger.info(f"Added {len(docs)} documents")
 
     def delete_documents(self, filter_metadata: Dict[str, Any]) -> None:
         self._vector_store.delete(where=filter_metadata)
-        self._vector_store.persist()
         logger.info(f"Deleted documents with filter={filter_metadata}")
 
     def clear(self) -> None:
         self._vector_store.delete(where={})
-        self._vector_store.persist()
         logger.warning("Vector store cleared")
 
     def _retrieve(self, query: str, top_k: int) -> List[Document]:
