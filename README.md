@@ -68,52 +68,45 @@ docker-compose up
 
 ---
 
-## 🔌 API Endpoints
+# 📖 Документація API системи RAG
 
-### 📁 Vector Memory Management
-
-Manage your document store and perform semantic search.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/vector-memory/documents/file` | Upload and index a file |
-| `POST` | `/vector-memory/documents/url` | Add documents from URL |
-| `POST` | `/vector-memory/search` | Search documents semantically |
-| `DELETE` | `/vector-memory/delete` | Delete documents by metadata |
-| `DELETE` | `/vector-memory/clear` | Clear entire vector store |
-| `GET` | `/vector-memory/status` | Get vector store statistics |
+Цей документ містить опис доступних ендпоінтів для взаємодії з агентом та векторною пам'яттю.
 
 ---
 
-### 💬 RAG Agent Chat
+## 🤖 Роутер: Agent (`/agent`)
+Використовується для інтелектуального спілкування з асистентом, який має доступ до бази знань.
 
-Interact with the intelligent RAG agent for question-answering.
+### 1. Чат з агентом
+* **URL:** `/agent/chat`
+* **Метод:** `POST`
+* **Тіло запиту:** `RAGQueryRequest`
+* **Опис:** Відправляє запит до RAG-агента. Агент може перефразувати питання для кращого пошуку та повертає відповідь разом із посиланнями на джерела.
 
-| Method | Path         | Description |
-|--------|--------------|-------------|
-| `POST` | `/rag/chat`     | Ask a question to the RAG agent |
-| `POST` | `/rag/reset` | Reset conversation memory |
+---
 
-#### Examples
+## 🧠 Роутер: Vector Memory (`/vector-memory`)
+Керування документами, їх індексація та семантичний пошук.
 
-**Ask a question:**
-```bash
-curl -X POST "http://localhost:8000/rag/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Explain the main concepts from the uploaded documents"
-  }'
-```
+### 📥 Додавання контенту
+| Метод | Шлях | Опис |
+| :--- | :--- | :--- |
+| `POST` | `/documents/file` | Завантаження файлу (`.pdf`, `.docx`, `.txt`, `.md`, `.html`). Обробка у фоні. |
+| `POST` | `/documents/url` | Індексація контенту за прямим посиланням. |
 
-**Response format:**
-```json
-{
-  "answer": "Based on the documents...",
-  "sources": ["doc1.pdf", "doc2.pdf"],
-  "docs_count": 3,
-  "error": null
-}
-```
+### 🔍 Пошук та статус
+| Метод | Шлях | Опис |
+| :--- | :--- | :--- |
+| `POST` | `/search` | Повнотекстовий та семантичний пошук у векторній базі. |
+| `GET` | `/status` | Отримання статистики сховища (кількість документів тощо). |
+
+### 🗑️ Видалення
+| Метод | Шлях | Опис |
+| :--- | :--- | :--- |
+| `DELETE` | `/delete` | Видалення конкретних документів за фільтром метаданих. |
+| `DELETE` | `/clear` | Повне очищення всієї векторної бази. |
+
+---
 ---
 
 ## 🏗️ Architecture
