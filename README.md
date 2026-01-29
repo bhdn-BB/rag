@@ -146,23 +146,5 @@ streamlit run streamlit_app.py
 
 ---
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. Port already in use:**
-```bash
-# Kill process on port 8000
-lsof -ti:8000 | xargs kill -9
-```
-
-**2. Docker build fails:**
-```bash
-# Clean Docker cache
-docker system prune -a
-docker-compose build --no-cache
-```
-
-**3. Vector store not persisting:**
-- Check volume mounts in `docker-compose.yml`
-- Ensure proper permissions on data directories
+## Example
+![Response Example](assets/response_example.png)
