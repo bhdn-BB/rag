@@ -1,14 +1,30 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 
 
 class SourceInfoResponse(BaseModel):
     content: str = Field(..., description="Фрагмент тексту з документа")
     source: str = Field(..., description="Назва документа або URL")
-    page: Optional[int] = Field(None, description="Номер сторінки")
-    section: Optional[str] = Field(None, description="Назва розділу/секції")
+    source_type: Literal["document", "url"] = Field(..., description="Тип джерела")
+
+    # Для документів
+    page: Optional[int] = Field(None, description="Номер сторінки (тільки для документів)")
+    section: Optional[str] = Field(None, description="Назва розділу/секції (тільки для документів)")
+
+    # Для обох типів
     score: Optional[float] = Field(None, description="Relevance score")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Додаткова metadata")
+
+    def format_citation(self) -> str:
+        if self.source_type == "url":
+            return f"🔗 {self.source}"
+        else:
+            parts = [f"📄 {self.source}"]
+            if self.page:
+                parts.append(f"стор. {self.page}")
+            if self.section:
+                parts.append(f"розділ: {self.section}")
+            return ", ".join(parts)
 
 
 class RAGQueryRequest(BaseModel):
@@ -43,9 +59,19 @@ class RAGQueryResponse(BaseModel):
                     {
                         "content": "ML allows computers to learn...",
                         "source": "ML_Guide.pdf",
+                        "source_type": "document",
                         "page": 12,
                         "section": "Introduction",
                         "score": 0.95,
+                        "metadata": {}
+                    },
+                    {
+                        "content": "According to the documentation...",
+                        "source": "https://docs.example.com/ml",
+                        "source_type": "url",
+                        "page": None,
+                        "section": None,
+                        "score": 0.88,
                         "metadata": {}
                     }
                 ],
