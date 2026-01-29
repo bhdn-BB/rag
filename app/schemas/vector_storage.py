@@ -6,8 +6,8 @@ class SearchRequest(BaseModel):
     query: str
     top_k_retrieve: int = 50
     use_reranking: bool = False
-    top_k_reranking: int = 5
-    rerank_threshold: float = 0.2
+    top_k_reranking: int = 50
+    rerank_threshold: float = 0.1
 
 
 class SearchResultItem(BaseModel):

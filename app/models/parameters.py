@@ -14,7 +14,7 @@ class BatchWorker:
 @dataclass
 class ChunkingParameters:
     chunk_size: int = 800
-    chunk_overlap: int = 100
+    chunk_overlap: int = 150
     h_separator: List[str] = field(default_factory=lambda: ["\n\n", "\n"])
     respect_sections: bool = True
 
@@ -25,7 +25,7 @@ class BiEncoderParams:
     device: Optional[str] = field(
         default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu"
     )
-    max_length: int = 256  # CRITICAL: зменшено з 800 до 256 для уникнення помилок
+    max_length: int = 512
     normalize: bool = True
 
 
@@ -35,24 +35,24 @@ class CrossEncoderParams:
     device: Optional[str] = field(
         default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu"
     )
-    max_length: int = 256
+    max_length: int = 512
 
 
-@dataclass
-class LLMSummarizerParams:
-    model_name: str = "gpt-4o-mini"
-    temperature: float = 0.0
-    max_input_tokens: int = 2000
-
-
-@dataclass
-class NLPSummarizerParams:
-    model_name: str = "facebook/bart-large-cnn"
-    max_length: int = 150
-    min_length: int = 40
-    num_beams: int = 4
-    length_penalty: float = 2.0
-    max_input_tokens: int = 2000
+# @dataclass
+# class LLMSummarizerParams:
+#     model_name: str = "gpt-4o-mini"
+#     temperature: float = 0.0
+#     max_input_tokens: int = 2000
+#
+#
+# @dataclass
+# class NLPSummarizerParams:
+#     model_name: str = "facebook/bart-large-cnn"
+#     max_length: int = 150
+#     min_length: int = 40
+#     num_beams: int = 4
+#     length_penalty: float = 2.0
+#     max_input_tokens: int = 2000
 
 
 @dataclass
@@ -68,7 +68,7 @@ class SearchParameters:
 class LLMParams:
     model_name: str = "gemini-2.5-flash"
     temperature: float = 0
-    max_output_tokens: int = 512
+    max_output_tokens: int = 3000
 
 
 @dataclass

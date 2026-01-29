@@ -30,5 +30,17 @@ class LLMClient:
                 ),
             )
             return resp.text.strip()
+
         except Exception as e:
+            error_msg = str(e).lower()
+
+            if "quota" in error_msg or "resource exhausted" in error_msg:
+                logger.warning(f"Quota exceeded: {e}")
+                return "⚠️ Ліміт генерації вичерпано."
+
+            if "invalid" in error_msg and "api" in error_msg:
+                logger.error(f"Invalid API key: {e}")
+                return "⚠️ Помилка автентифікації."
+
             logger.error(f"LLM generation error: {e}")
+            return "⚠️ Помилка генерації відповіді."

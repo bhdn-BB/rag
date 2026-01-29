@@ -1,42 +1,62 @@
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
+from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
-from langchain_chroma import Chroma
 
-from app.models.parameters import SearchParameters, SearchHit
+from app.models.parameters import SearchHit, SearchParameters
 from app.services.embedders import HFBiEmbedder, HFCrossEncoder
 
-logger = logging.getLogger("VectorMemory")
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s", "%Y-%m-%d %H:%M:%S")
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(asctime)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class HFEmbeddingWrapper(Embeddings):
-    def __init__(self, embedder: HFBiEmbedder, batch_size: int = 16):
-        self.embedder = embedder
-        self.batch_size = batch_size
+    def __init__(
+        self,
+        embedder: HFBiEmbedder,
+        batch_size: int = 16,
+    ) -> None:
+        self.embedder: HFBiEmbedder = embedder
+        self.batch_size: int = batch_size
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(
+        self,
+        texts: List[str],
+    ) -> List[List[float]]:
         embeddings: List[List[float]] = []
-        for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i+self.batch_size]
-            batch_embeddings = [
-                self.embedder.get_embedding(text).cpu().tolist() for text in batch
+
+        for start in range(0, len(texts), self.batch_size):
+            batch: List[str] = texts[start : start + self.batch_size]
+
+            batch_embeddings: List[List[float]] = [
+                self.embedder.get_embedding(text).cpu().tolist()
+                for text in batch
             ]
+
             embeddings.extend(batch_embeddings)
-            logger.info(f"Embedded batch {i // self.batch_size + 1} (size={len(batch)})")
+
+            logger.info(
+                "Embedded batch | index=%d size=%d",
+                start // self.batch_size + 1,
+                len(batch),
+            )
+
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
-        embedding = self.embedder.get_embedding(text).cpu().tolist()
-        logger.info(f"Embedded query: {text[:50]}...")
+        embedding: List[float] = (
+            self.embedder.get_embedding(text).cpu().tolist()
+        )
+
+        logger.info("Embedded query | preview=%s", text[:50])
         return embedding
 
 
@@ -50,71 +70,124 @@ class VectorMemory:
     ):
         self.persist_path = persist_path
         self.cross_encoder = cross_encoder
-        Path(self.persist_path).mkdir(parents=True, exist_ok=True)
+        Path(self.persist_path).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        embedding_wrapper = HFEmbeddingWrapper(bi_embedder)
+        embedding_wrapper: HFEmbeddingWrapper = HFEmbeddingWrapper(
+            bi_embedder,
+        )
 
         self._vector_store = Chroma(
             collection_name=collection_name,
             persist_directory=self.persist_path,
             embedding_function=embedding_wrapper,
         )
-        logger.info(f"VectorMemory initialized at {self.persist_path}")
+        logger.info(
+            "VectorMemory initialized | path=%s collection=%s",
+            self.persist_path,
+            collection_name,
+        )
 
-    def add_documents(self, docs: List[Document]) -> None:
-        if not docs:
+    def add_documents(self, documents: List[Document]) -> None:
+        if not documents:
             logger.warning("No documents to add")
             return
-        self._vector_store.add_documents(docs)
-        logger.info(f"Added {len(docs)} documents")
+        self._vector_store.add_documents(documents)
+        logger.info(
+            "Documents added | count=%d",
+            len(documents),
+        )
 
-    def delete_documents(self, filter_metadata: Dict[str, Any]) -> None:
+    def delete_documents(
+        self,
+        filter_metadata: Dict[str, Any],
+    ) -> None:
         self._vector_store.delete(where=filter_metadata)
-        logger.info(f"Deleted documents with filter={filter_metadata}")
-
+        logger.info(
+            "Documents deleted | filter=%s",
+            filter_metadata,
+        )
     def clear(self) -> None:
         collection = self._vector_store._collection
-        all_ids = collection.get()["ids"]
-        if all_ids:
-            collection.delete(ids=all_ids)
-            logger.warning(f"Vector store cleared: deleted {len(all_ids)} documents")
-        else:
-            logger.warning("Vector store is already empty")
+        ids: List[str] = collection.get().get("ids", [])
 
-    def _retrieve(self, query: str, top_k: int) -> List[Document]:
-        retriever = self._vector_store.as_retriever(search_kwargs={"k": top_k})
+        if not ids:
+            logger.warning("Vector store already empty")
+            return
+
+        collection.delete(ids=ids)
+
+        logger.warning(
+            "Vector store cleared | deleted=%d",
+            len(ids),
+        )
+
+    def _retrieve(
+        self,
+        query: str,
+        top_k: int,
+    ) -> List[Document]:
+        retriever = self._vector_store.as_retriever(
+            search_kwargs={"k": top_k},
+        )
         return retriever.invoke(query)
 
     def _rerank(
         self,
         query: str,
-        docs: List[Document],
+        documents: List[Document],
         threshold: float,
     ) -> List[SearchHit]:
         if not self.cross_encoder:
-            return [SearchHit(d) for d in docs]
+            return [SearchHit(doc) for doc in documents]
 
         hits: List[SearchHit] = []
-        for doc in docs:
-            score = self.cross_encoder.get_score(query, doc.page_content)
+
+        for doc in documents:
+            score: float = self.cross_encoder.get_score(
+                query,
+                doc.page_content,
+            )
+
             if score >= threshold:
                 hits.append(SearchHit(doc, score))
-        hits.sort(key=lambda x: x.score or 0, reverse=True)
+
+        hits.sort(
+            key=lambda hit: hit.score or 0.0,
+            reverse=True,
+        )
+
         return hits
 
-    def search(self, params: SearchParameters) -> List[SearchHit]:
-        docs = self._retrieve(params.query, params.top_k_retrieve)
-        if params.use_reranking:
-            hits = self._rerank(params.query, docs, params.rerank_threshold)
-            return hits[:params.top_k_reranking]
-        return [SearchHit(d) for d in docs]
+    def search(
+        self,
+        params: SearchParameters,
+    ) -> List[SearchHit]:
+
+        documents: List[Document] = self._retrieve(
+            params.query,
+            params.top_k_retrieve,
+        )
+
+        if not params.use_reranking:
+            return [SearchHit(doc) for doc in documents]
+
+        hits: List[SearchHit] = self._rerank(
+            params.query,
+            documents,
+            params.rerank_threshold,
+        )
+
+        return hits[: params.top_k_reranking]
 
     def get_stats(self) -> Dict[str, Any]:
         collection = self._vector_store._collection
-        num_docs = len(collection.get()["ids"]) if collection else 0
+        ids: List[str] = collection.get().get("ids", [])
         return {
             "status": "ready",
-            "num_documents": num_docs,
+            "num_documents": len(ids),
             "persist_path": self.persist_path,
             "has_cross_encoder": self.cross_encoder is not None,
         }

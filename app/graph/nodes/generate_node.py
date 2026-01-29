@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List
 from app.graph.llm_client import LLMClient
 from app.graph.prompts import get_prompt_template
 from langchain_core.documents import Document
@@ -36,21 +36,36 @@ class GenerateNode:
             metadata=metadata
         )
 
+    def _convert_to_document(self, item, idx: int) -> tuple[Document, float]:
+        if hasattr(item, 'document') and hasattr(item, 'score'):
+            return item.document, item.score
+
+        elif isinstance(item, Document):
+            score = item.metadata.get('score') if item.metadata else None
+            return item, score
+        else:
+            logger.warning(f"Unknown item type at index {idx}: {type(item)}")
+            return item, None
+
     def __call__(self, state: GraphState) -> dict:
-        docs: List[Document] = state["docs"]
-        if not docs:
+        docs_raw = state["docs"]
+
+        if not docs_raw:
+            logger.warning("No documents provided for generation")
             return {
                 "answer": "",
                 "sources": []
             }
+
         context_parts = []
         sources_info: List[SourceInfo] = []
 
-        for idx, doc in enumerate(docs, 1):
-            metadata = doc.metadata or {}
-            score = metadata.get("score")
+        for idx, item in enumerate(docs_raw, 1):
+            doc, score = self._convert_to_document(item, idx)
+
             source_info = self._extract_source_info(doc, idx, score)
             sources_info.append(source_info)
+
             source_label = f"[{idx}] {source_info['source']}"
             if source_info['page'] is not None:
                 source_label += f" (стор. {source_info['page']})"
@@ -68,6 +83,7 @@ class GenerateNode:
         except Exception as e:
             logger.error(f"LLM generation error: {e}")
             answer = ""
+
         return {
             "answer": answer,
             "sources": sources_info
