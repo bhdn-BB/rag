@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.routers.vdb_crud import router as vdb_crud_router
+from app.routers.vdb_crud import router as vector_memory_router
 from app.routers.agent import router as agent_router
 
 logging.basicConfig(
@@ -43,7 +43,7 @@ async def root():
         "health": "/health"
     }
 
-app.include_router(router=vdb_crud_router)
+app.include_router(router=vector_memory_router)
 app.include_router(router=agent_router)
 
 if __name__ == "__main__":

@@ -8,10 +8,11 @@ class RewriteNode:
 
     def __call__(self, state: GraphState) -> dict:
         query = state["query"]
-        result = {}
-        if state["docs"]:
-            result["rewrite_attempts"] = 1
+        if state["rewrite_attempts"] == 0:
+            return {"query": query}
         prompt = f"Перефразуй цей запит для покращення пошуку: '{query}'"
         rewritten = self.llm_client.generate(prompt)
-        result["query"] = rewritten
-        return result
+        return {
+            "query": rewritten,
+            "rewrite_attempts": state["rewrite_attempts"] + 1
+        }

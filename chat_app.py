@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+import uuid
 
 # Підтримка Docker environment
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
@@ -10,20 +11,16 @@ def format_source(source: dict, idx: int) -> str:
     """Форматує джерело для відображення"""
     parts = [f"**[{idx}] {source['source']}**"]
 
-    # Додаємо сторінку якщо є
     if source.get('page') is not None:
         parts.append(f"📄 Сторінка: {source['page']}")
 
-    # Додаємо розділ якщо є
     if source.get('section'):
         parts.append(f"📑 Розділ: {source['section']}")
 
-    # Додаємо score якщо є
     if source.get('score') is not None:
         score_percent = source['score'] * 100
         parts.append(f"🎯 Релевантність: {score_percent:.1f}%")
 
-    # Показуємо фрагмент тексту
     if source.get('content'):
         parts.append(f"\n> {source['content']}")
 
@@ -32,10 +29,14 @@ def format_source(source: dict, idx: int) -> str:
 
 def main():
     # -----------------------------
-    # Session state
+    # Session state ініціалізація
     # -----------------------------
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    # Унікальний ID сесії для backend
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
 
     # -----------------------------
     # Sidebar — Documents
@@ -54,9 +55,9 @@ def main():
                         params={"url": url},
                         timeout=60
                     )
-                if r.status_code == 200:
+                if r.status_code in [200, 202]:
                     data = r.json()
-                    st.sidebar.success(f"✅ Додано {data.get('chunks_added', 0)} фрагментів")
+                    st.sidebar.success(f"✅ {data.get('message', 'Додано')}")
                 else:
                     st.sidebar.error(f"❌ Помилка: {r.status_code}")
             except Exception as e:
@@ -65,7 +66,7 @@ def main():
     else:
         file = st.sidebar.file_uploader(
             "Завантажити файл",
-            type=["pdf", "docx", "txt", "md"],
+            type=["pdf", "docx", "txt", "md", "html"],
         )
         if file and st.sidebar.button("➕ Додати файл"):
             try:
@@ -75,7 +76,7 @@ def main():
                         files={"file": file},
                         timeout=120
                     )
-                if r.status_code == 200:
+                if r.status_code in [200, 202]:
                     st.sidebar.success("✅ Файл додається у фоні")
                 else:
                     st.sidebar.error(f"❌ Помилка: {r.status_code}")
@@ -115,14 +116,14 @@ def main():
     st.sidebar.divider()
 
     # -----------------------------
-    # Reset conversation
+    # New conversation - RESET через новий session_id
     # -----------------------------
-    if st.sidebar.button("🔁 Нова розмова"):
+    if st.sidebar.button("🔁 Нова розмова", type="primary"):
+        # Генеруємо НОВИЙ session_id = backend автоматично створить новий агент
+        st.session_state.session_id = str(uuid.uuid4())
+        # Очищаємо історію UI
         st.session_state.messages = []
-        try:
-            requests.post(f"{API_BASE}/agent/reset", timeout=5)
-        except Exception:
-            pass
+        st.sidebar.success("✅ Розпочато нову розмову")
         st.rerun()
 
     # =============================
@@ -130,18 +131,20 @@ def main():
     # =============================
     st.title("💬 RAG чат з джерелами")
     st.caption(f"🔗 Підключено до: {API_BASE}")
+    st.caption(f"🆔 Сесія: {st.session_state.session_id[:8]}...")
 
     # Render chat history
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-            # Показуємо джерела якщо є
+            # Показуємо джерела
             if msg["role"] == "assistant" and "sources" in msg and msg["sources"]:
                 with st.expander(f"📚 Джерела ({len(msg['sources'])})"):
                     for idx, source in enumerate(msg["sources"], 1):
                         st.markdown(format_source(source, idx))
-                        st.divider()
+                        if idx < len(msg["sources"]):
+                            st.divider()
 
     # Chat input
     user_input = st.chat_input("Задайте питання на основі документів...")
@@ -155,13 +158,17 @@ def main():
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # Call backend
+        # Call backend з session_id
         with st.chat_message("assistant"):
             with st.spinner("🤔 Шукаю відповідь..."):
                 try:
+                    # Відправляємо запит з session_id
                     r = requests.post(
                         f"{API_BASE}/agent/chat",
-                        json={"query": user_input},
+                        json={
+                            "query": user_input,
+                            "session_id": st.session_state.session_id  # ← Передаємо сесію
+                        },
                         timeout=60
                     )
 
@@ -183,15 +190,20 @@ def main():
                                     if idx < len(sources):
                                         st.divider()
                         else:
-                            st.warning("⚠️ Джерела не знайдено")
+                            # Немає джерел
+                            if "немає" in answer.lower():
+                                st.info("💡 Спробуйте переформулювати питання або додати більше документів")
 
                         # Додаткова інформація
-                        if rewrite_attempts > 0:
-                            st.info(f"🔄 Запит було переформульовано {rewrite_attempts} раз(и)")
+                        with st.expander("ℹ️ Детальна інформація", expanded=False):
+                            if rewrite_attempts > 0:
+                                st.write(f"🔄 Запит було переформульовано {rewrite_attempts} раз(и)")
 
-                        if query_rewritten and query_rewritten != user_input:
-                            with st.expander("🔍 Оптимізований запит"):
+                            if query_rewritten and query_rewritten != user_input:
+                                st.write("🔍 Оптимізований запит:")
                                 st.code(query_rewritten)
+
+                            st.write(f"📊 Знайдено джерел: {len(sources)}")
 
                         # Зберігаємо в історію
                         st.session_state.messages.append({
@@ -201,7 +213,7 @@ def main():
                         })
 
                     else:
-                        error_msg = f"❌ Помилка: {r.status_code} - {r.text}"
+                        error_msg = f"❌ Помилка: {r.status_code}"
                         st.error(error_msg)
                         st.session_state.messages.append({
                             "role": "assistant",
@@ -222,7 +234,7 @@ def main():
 # -----------------------------
 if __name__ == "__main__":
     st.set_page_config(
-        page_title="RAG",
+        page_title="RAG чат з джерелами",
         layout="wide",
         page_icon="💬",
         initial_sidebar_state="expanded"
