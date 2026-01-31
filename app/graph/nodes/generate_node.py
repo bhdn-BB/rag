@@ -14,7 +14,12 @@ class GenerateNode:
         self.llm_client = llm_client
         self.prompt_template = get_prompt_template()
 
-    def _extract_source_info(self, doc: Document, idx: int, score: float = None) -> SourceInfo:
+    def _extract_source_info(
+            self,
+            doc: Document,
+            idx: int,
+            score: float = None
+    ) -> SourceInfo:
 
         metadata = doc.metadata or {}
         source = metadata.get("source") or metadata.get("title") or f"Документ_{idx}"
@@ -37,7 +42,11 @@ class GenerateNode:
             metadata=metadata
         )
 
-    def _convert_to_document(self, item, idx: int) -> tuple[Document, float]:
+    def _convert_to_document(
+            self,
+            item,
+            idx: int
+    ) -> tuple[Document, float]:
         if hasattr(item, 'document') and hasattr(item, 'score'):
             return item.document, item.score
         elif isinstance(item, Document):
