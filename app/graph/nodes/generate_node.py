@@ -9,14 +9,15 @@ logger = logging.getLogger("GenerateNode")
 
 
 class GenerateNode:
+
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
         self.prompt_template = get_prompt_template()
 
     def _extract_source_info(self, doc: Document, idx: int, score: float = None) -> SourceInfo:
-        metadata = doc.metadata or {}
 
-        source = metadata.get("source") or metadata.get("title") or f"Document_{idx}"
+        metadata = doc.metadata or {}
+        source = metadata.get("source") or metadata.get("title") or f"Документ_{idx}"
 
         page = metadata.get("page") or metadata.get("page_number")
         if page is not None:
@@ -39,19 +40,42 @@ class GenerateNode:
     def _convert_to_document(self, item, idx: int) -> tuple[Document, float]:
         if hasattr(item, 'document') and hasattr(item, 'score'):
             return item.document, item.score
-
         elif isinstance(item, Document):
             score = item.metadata.get('score') if item.metadata else None
             return item, score
         else:
-            logger.warning(f"Unknown item type at index {idx}: {type(item)}")
+            logger.warning(f"Невідомий тип елемента на позиції {idx}: {type(item)}")
             return item, None
 
     def __call__(self, state: GraphState) -> dict:
-        docs_raw = state["docs"]
+
+        docs_raw = state.get("docs", [])
+        query = state["query"]
+
+        if not docs_raw and not state.get("need_external_info", True):
+            logger.info("Генерація відповіді без зовнішніх документів (загальні знання)")
+
+            prompt = f"""Відповідь на запит користувача на основі загальних знань.
+Запит: {query}
+
+Дай чітку та лаконічну відповідь українською мовою:"""
+
+            try:
+                answer = self.llm_client.generate(prompt)
+                logger.info("Відповідь згенеровано без документів")
+                return {
+                    "answer": answer,
+                    "sources": []
+                }
+            except Exception as e:
+                logger.error(f"Помилка генерації без документів: {e}")
+                return {
+                    "answer": "",
+                    "sources": []
+                }
 
         if not docs_raw:
-            logger.warning("No documents provided for generation")
+            logger.warning("Документи не надано для генерації")
             return {
                 "answer": "",
                 "sources": []
@@ -71,17 +95,21 @@ class GenerateNode:
                 source_label += f" (стор. {source_info['page']})"
             if source_info['section']:
                 source_label += f" - {source_info['section']}"
+
             context_parts.append(f"{source_label}\n{doc.page_content}")
+
         context_text = "\n\n---\n\n".join(context_parts)
+
         prompt = self.prompt_template.format(
             context=context_text,
-            query=state["query"]
+            query=query
         )
+
         try:
             answer = self.llm_client.generate(prompt)
-            logger.info(f"Generated answer with {len(sources_info)} sources")
+            logger.info(f"Відповідь згенеровано з {len(sources_info)} джерелами")
         except Exception as e:
-            logger.error(f"LLM generation error: {e}")
+            logger.error(f"Помилка генерації LLM: {e}")
             answer = ""
 
         return {

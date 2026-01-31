@@ -19,14 +19,22 @@ class LLMClient:
             raise ValueError("LLM_API_KEY не встановлено в середовищі")
         self.client = genai.Client(api_key=self.api_key)
 
-    def generate(self, prompt: str) -> str:
+    def generate(
+            self,
+            prompt: str,
+            max_tokens: int | None = None
+    ) -> str:
+
+        if max_tokens is None:
+            max_tokens = self.params.max_output_tokens
+
         try:
             resp = self.client.models.generate_content(
                 model=self.params.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=self.params.temperature,
-                    max_output_tokens=self.params.max_output_tokens,
+                    max_output_tokens=max_tokens,
                 ),
             )
             return resp.text.strip()
@@ -36,11 +44,11 @@ class LLMClient:
 
             if "quota" in error_msg or "resource exhausted" in error_msg:
                 logger.warning(f"Quota exceeded: {e}")
-                return "⚠️ Ліміт генерації вичерпано."
+                return "Ліміт генерації вичерпано."
 
             if "invalid" in error_msg and "api" in error_msg:
                 logger.error(f"Invalid API key: {e}")
-                return "⚠️ Помилка автентифікації."
+                return "Помилка автентифікації."
 
             logger.error(f"LLM generation error: {e}")
-            return "⚠️ Помилка генерації відповіді."
+            return "Помилка генерації відповіді."
