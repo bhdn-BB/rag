@@ -1,7 +1,8 @@
 # 🤖 Agentic RAG Application
 
 A production-ready Retrieval-Augmented Generation (RAG) system with agent capabilities, built with FastAPI and LangChain.
-
+## Current pipeline
+![current_pipeline.png](assets/current_pipeline.png)
 ## 📋 Features
 
 - **Vector Memory Management**: Store and search documents using semantic embeddings
